@@ -1,135 +1,136 @@
-# Laboratory Work 1 — Variant 2: Message Status Tracking
+# Лабораторна робота №1 — Варіант 2: Відстеження статусів повідомлень
 
-**Student:** _(your name)_  
-**Variant:** 2 — Message Status Tracking  
-**Focus:** State machine and lifecycle of message statuses
+**Студент:** _(ваше ім'я)_  
+**Варіант:** 2 — Відстеження статусів повідомлень  
+**Фокус:** Стан-машина та життєвий цикл статусів повідомлення
 
 ---
 
-## 🧩 Part 1 — Component Diagram
+## 🧩 Частина 1 — Діаграма компонентів
 
-The system consists of the following components:
+Система складається з таких компонентів:
 
-- **Client (Web / Mobile)** — sends messages and receives real-time status updates via WebSocket.
-- **Backend API** — handles incoming HTTP requests and routes them to the appropriate services.
-- **Message Service** — responsible for creating, storing, and initiating delivery of messages.
-- **Status Service** — tracks and updates message statuses based on client acknowledgements.
-- **Database** — persists messages and their current status.
-- **WebSocket / Push** — delivers real-time events (status changes) back to clients.
+- **Client (Web / Mobile)** — надсилає повідомлення та отримує оновлення статусів у реальному часі через WebSocket.
+- **Backend API** — обробляє вхідні HTTP-запити та маршрутизує їх до відповідних сервісів.
+- **Message Service** — відповідає за створення, збереження та доставку повідомлень.
+- **Status Service** — відстежує та оновлює статуси повідомлень на основі підтверджень від клієнта.
+- **Database** — зберігає повідомлення та їхні поточні статуси.
+- **WebSocket / Push** — доставляє події в реальному часі (зміни статусів) назад клієнтам.
 
 ```mermaid
 graph LR
   Client -->|POST /messages| API
   API --> MessageService
   API --> StatusService
-  MessageService --> DB[(Database)]
+  MessageService --> DB[(База даних)]
   MessageService --> WebSocket
   StatusService --> DB
-  WebSocket -->|status update event| Client
+  WebSocket -->|подія оновлення статусу| Client
 ```
 
 ---
 
-## 🔁 Part 2 — Sequence Diagram
+## 🔁 Частина 2 — Діаграма послідовності
 
-**Scenario:** User A sends a message to User B, who is online. The system tracks delivery and read acknowledgements.
+**Сценарій:** Користувач А надсилає повідомлення користувачу Б, який онлайн. Система відстежує підтвердження доставки та прочитання.
 
 ```mermaid
 sequenceDiagram
-  participant A as User A
+  participant A as Користувач А
   participant API
   participant Msg as Message Service
   participant DB
   participant Status as Status Service
   participant WS as WebSocket
-  participant B as User B
+  participant B as Користувач Б
 
-  A->>API: POST /messages {to: B, text: "Hello"}
+  A->>API: POST /messages {to: Б, text: "Привіт"}
   API->>Msg: createMessage()
   Msg->>DB: save(message, status=sent)
-  Msg->>WS: push message to B
+  Msg->>WS: надіслати повідомлення Б
   API-->>A: 202 Accepted
 
-  WS->>B: deliver message
+  WS->>B: доставити повідомлення
   B->>API: ACK delivered
   API->>Status: updateStatus(msgId, delivered)
-  Status->>DB: update status=delivered
-  Status->>WS: notify A: "delivered"
-  WS->>A: status update event
+  Status->>DB: оновити status=delivered
+  Status->>WS: повідомити А: "доставлено"
+  WS->>A: подія оновлення статусу
 
   B->>API: ACK read
   API->>Status: updateStatus(msgId, read)
-  Status->>DB: update status=read
-  Status->>WS: notify A: "read"
-  WS->>A: status update event
+  Status->>DB: оновити status=read
+  Status->>WS: повідомити А: "прочитано"
+  WS->>A: подія оновлення статусу
 ```
 
 ---
 
-## 🔄 Part 3 — State Diagram
+## 🔄 Частина 3 — Діаграма станів
 
-**Object:** `Message`
+**Об'єкт:** `Message` (Повідомлення)
 
-The message goes through the following lifecycle states:
+Повідомлення проходить через такі стани:
 
 ```mermaid
 stateDiagram-v2
-  [*] --> Sent : message created & stored
-  Sent --> Delivered : recipient ACK received
-  Sent --> Failed : delivery timeout / error
-  Failed --> Sent : retry
-  Delivered --> Read : recipient opens message
-  Read --> [*]
+  [*] --> Надіслано : повідомлення створено та збережено
+  Надіслано --> Доставлено : отримано ACK від одержувача
+  Надіслано --> Помилка : тайм-аут доставки / помилка
+  Помилка --> Надіслано : повторна спроба
+  Доставлено --> Прочитано : користувач відкрив повідомлення
+  Прочитано --> [*]
 ```
 
-**State descriptions:**
+**Опис станів:**
 
-| State | Description |
+| Стан | Опис |
 |---|---|
-| `Sent` | Message saved in DB, delivery attempted |
-| `Delivered` | Client acknowledged receipt |
-| `Failed` | No ACK within timeout window |
-| `Read` | User opened / viewed the message |
+| `Надіслано` | Повідомлення збережено в БД, спроба доставки здійснена |
+| `Доставлено` | Клієнт підтвердив отримання (ACK delivered) |
+| `Помилка` | Не отримано ACK протягом часу очікування |
+| `Прочитано` | Користувач відкрив / переглянув повідомлення |
 
 ---
 
-## 📚 Part 4 — ADR-001: Client Acknowledgement Strategy
+## 📚 Частина 4 — ADR-001: Стратегія підтвердження від клієнта
 
 ```markdown
-# ADR-001: Use Explicit Client Acknowledgements for Status Updates
+# ADR-001: Використання явних підтверджень від клієнта для оновлення статусів
 
-## Status
-Accepted
+## Статус
+Прийнято
 
-## Context
-The system needs to reliably track whether a message was delivered to and
-read by the recipient. The server cannot know this on its own — it depends
-on the client confirming receipt.
+## Контекст
+Система має надійно відстежувати, чи було повідомлення доставлено та прочитано
+одержувачем. Сервер не може визначити це самостійно — він залежить від підтверджень
+з боку клієнта.
 
-## Decision
-The client sends two explicit ACK events to the API:
-1. `ACK delivered` — sent automatically when the message arrives in the app.
-2. `ACK read` — sent when the user opens the conversation containing the message.
+## Рішення
+Клієнт надсилає два явні ACK-події до API:
+1. `ACK delivered` — надсилається автоматично, коли повідомлення надходить у застосунок.
+2. `ACK read` — надсилається, коли користувач відкриває чат із цим повідомленням.
 
-The Status Service processes these events and updates the message state in the database.
-The sender is notified in real time via WebSocket.
+Status Service обробляє ці події та оновлює стан повідомлення в базі даних.
+Відправник отримує сповіщення в реальному часі через WebSocket.
 
-## Alternatives
-- **Polling** — client asks the server "what's the status?" periodically.
-  Rejected: wasteful, increases latency and server load.
-- **Server-side inference** — server marks "delivered" when WebSocket push succeeds.
-  Rejected: a push reaching the socket does not guarantee the app received it
-  (e.g., background tab, crash). ACKs are more accurate.
+## Альтернативи
+- **Polling (опитування)** — клієнт periodically запитує сервер про статус.
+  Відхилено: надмірне навантаження, висока затримка.
+- **Серверна інференція** — сервер вважає повідомлення "доставленим", якщо
+  WebSocket-пуш пройшов успішно.
+  Відхилено: успішний пуш не гарантує, що застосунок прийняв повідомлення
+  (наприклад, фонова вкладка, збій). ACK точніший.
 
-## Consequences
-+ Accurate delivery and read status tracking
-+ Sender gets real-time feedback
-- If the client is offline when ACK should be sent, the status update is delayed
-- Requires retry logic for missed ACKs (e.g., send ACK on next app open)
+## Наслідки
++ Точне відстеження статусів "доставлено" та "прочитано"
++ Відправник бачить зворотній зв'язок у реальному часі
+- Якщо клієнт офлайн під час ACK, оновлення статусу затримується
+- Потрібна логіка повторних спроб для пропущених ACK
 ```
 
 ---
 
-## Summary
+## Висновок
 
-This design focuses on the **lifecycle of a message** and the mechanism by which statuses are updated. The key architectural decision is using **explicit client ACKs** rather than server-side inference, which gives accurate and reliable status tracking at the cost of some added complexity in the client implementation.
+Цей проєкт зосереджений на **життєвому циклі повідомлення** та механізмі оновлення статусів. Ключове архітектурне рішення — використання **явних ACK від клієнта** замість серверної інференції, що забезпечує точне та надійне відстеження статусів ціною додаткової складності на стороні клієнта.
